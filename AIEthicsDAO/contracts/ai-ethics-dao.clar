@@ -122,4 +122,118 @@
     status: (string-ascii 20),
     created-at: uint
   }
-)`
+)
+
+;; Initialize with ethical categories and governance tokens
+(define-public (initialize)
+  (begin
+    (map-set ethical-categories { category: "bias-fairness" } { active: true, standard-count: u0 })
+    (map-set ethical-categories { category: "privacy-protection" } { active: true, standard-count: u0 })
+    (map-set ethical-categories { category: "transparency" } { active: true, standard-count: u0 })
+    (map-set ethical-categories { category: "safety-security" } { active: true, standard-count: u0 })
+    (map-set ethical-categories { category: "accountability" } { active: true, standard-count: u0 })
+    (map-set governance-tokens { holder: CONTRACT-OWNER } { balance: u1000000 })
+    (ok true)
+  )
+)
+
+;; Propose new ethical standard with expiry
+(define-public (propose-standard 
+  (title (string-ascii 100))
+  (description (string-ascii 500))
+  (category (string-ascii 50)))
+  (let
+    (
+      (standard-id (+ (var-get standard-count) u1))
+      (category-check (unwrap! (map-get? ethical-categories { category: category }) ERR-MODEL-NOT-FOUND))
+      (proposer-tokens (default-to { balance: u0 } (map-get? governance-tokens { holder: tx-sender })))
+      (expires-at (+ block-height (var-get challenge-period)))
+    )
+    (asserts! (get active category-check) ERR-NOT-AUTHORIZED)
+    (asserts! (> (get balance proposer-tokens) u100) ERR-INSUFFICIENT-STAKE)
+    
+    (map-set ethical-standards
+      { standard-id: standard-id }
+      {
+        title: title,
+        description: description,
+        category: category,
+        proposer: tx-sender,
+        votes-for: u0,
+        votes-against: u0,
+        status: "proposed",
+        created-at: block-height,
+        expires-at: expires-at
+      }
+    )
+    
+    ;; Update category counter
+    (map-set ethical-categories 
+      { category: category }
+      (merge category-check { standard-count: (+ (get standard-count category-check) u1) })
+    )
+    
+    (var-set standard-count standard-id)
+    (ok standard-id)
+  )
+)
+
+;; Vote on ethical standard with time check
+(define-public (vote-on-standard (standard-id uint) (support bool))
+  (let
+    (
+      (standard (unwrap! (map-get? ethical-standards { standard-id: standard-id }) ERR-MODEL-NOT-FOUND))
+      (voter-tokens (default-to { balance: u0 } (map-get? governance-tokens { holder: tx-sender })))
+      (existing-vote (map-get? stakeholder-votes { standard-id: standard-id, voter: tx-sender }))
+      (vote-weight (get balance voter-tokens))
+    )
+    (asserts! (> vote-weight u0) ERR-INSUFFICIENT-STAKE)
+    (asserts! (is-none existing-vote) ERR-ALREADY-VOTED)
+    (asserts! (is-eq (get status standard) "proposed") ERR-NOT-AUTHORIZED)
+    (asserts! (< block-height (get expires-at standard)) ERR-PROPOSAL-EXPIRED)
+    
+    (map-set stakeholder-votes
+      { standard-id: standard-id, voter: tx-sender }
+      { voted: true, vote-weight: vote-weight }
+    )
+    
+    (if support
+      (map-set ethical-standards
+        { standard-id: standard-id }
+        (merge standard { votes-for: (+ (get votes-for standard) vote-weight) })
+      )
+      (map-set ethical-standards
+        { standard-id: standard-id }
+        (merge standard { votes-against: (+ (get votes-against standard) vote-weight) })
+      )
+    )
+    
+    (ok true)
+  )
+)
+
+;; Finalize standard after voting period
+(define-public (finalize-standard (standard-id uint))
+  (let
+    (
+      (standard (unwrap! (map-get? ethical-standards { standard-id: standard-id }) ERR-MODEL-NOT-FOUND))
+      (threshold (var-get governance-threshold))
+    )
+    (asserts! (is-eq (get status standard) "proposed") ERR-NOT-AUTHORIZED)
+    (asserts! (>= block-height (get expires-at standard)) ERR-PROPOSAL-EXPIRED)
+    
+    (if (and (> (get votes-for standard) (get votes-against standard))
+             (> (get votes-for standard) threshold))
+      (map-set ethical-standards
+        { standard-id: standard-id }
+        (merge standard { status: "approved" })
+      )
+      (map-set ethical-standards
+        { standard-id: standard-id }
+        (merge standard { status: "rejected" })
+      )
+    )
+    
+    (ok true)
+  )
+)
