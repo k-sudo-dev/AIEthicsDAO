@@ -147,7 +147,7 @@
       (standard-id (+ (var-get standard-count) u1))
       (category-check (unwrap! (map-get? ethical-categories { category: category }) ERR-MODEL-NOT-FOUND))
       (proposer-tokens (default-to { balance: u0 } (map-get? governance-tokens { holder: tx-sender })))
-      (expires-at (+ block-height (var-get challenge-period)))
+      (expires-at (+ stacks-block-height (var-get challenge-period)))
     )
     (asserts! (get active category-check) ERR-NOT-AUTHORIZED)
     (asserts! (> (get balance proposer-tokens) u100) ERR-INSUFFICIENT-STAKE)
@@ -162,7 +162,7 @@
         votes-for: u0,
         votes-against: u0,
         status: "proposed",
-        created-at: block-height,
+        created-at: stacks-block-height,
         expires-at: expires-at
       }
     )
@@ -190,7 +190,7 @@
     (asserts! (> vote-weight u0) ERR-INSUFFICIENT-STAKE)
     (asserts! (is-none existing-vote) ERR-ALREADY-VOTED)
     (asserts! (is-eq (get status standard) "proposed") ERR-NOT-AUTHORIZED)
-    (asserts! (< block-height (get expires-at standard)) ERR-PROPOSAL-EXPIRED)
+    (asserts! (< stacks-block-height (get expires-at standard)) ERR-PROPOSAL-EXPIRED)
     
     (map-set stakeholder-votes
       { standard-id: standard-id, voter: tx-sender }
@@ -220,7 +220,7 @@
       (threshold (var-get governance-threshold))
     )
     (asserts! (is-eq (get status standard) "proposed") ERR-NOT-AUTHORIZED)
-    (asserts! (>= block-height (get expires-at standard)) ERR-PROPOSAL-EXPIRED)
+    (asserts! (>= stacks-block-height (get expires-at standard)) ERR-PROPOSAL-EXPIRED)
     
     (if (and (> (get votes-for standard) (get votes-against standard))
              (> (get votes-for standard) threshold))
@@ -285,7 +285,7 @@
         audit-report: 0x00,
         payment: auditor-payment,
         status: "pending",
-        created-at: block-height,
+        created-at: stacks-block-height,
         requester: tx-sender
       }
     )
@@ -381,7 +381,7 @@
         votes-support: u0,
         votes-reject: u0,
         status: "active",
-        created-at: block-height
+        created-at: stacks-block-height
       }
     )
     
@@ -407,7 +407,7 @@
       {
         reason: reason,
         severity: severity,
-        reported-at: block-height,
+        reported-at: stacks-block-height,
         resolved: false
       }
     )
@@ -438,7 +438,7 @@
         votes-against: u0,
         funding-requested: funding-requested,
         status: "proposed",
-        created-at: block-height
+        created-at: stacks-block-height
       }
     )
     
