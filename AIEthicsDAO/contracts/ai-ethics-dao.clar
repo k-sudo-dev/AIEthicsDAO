@@ -368,7 +368,6 @@
     )
     (asserts! (is-eq (get status audit) "completed") ERR-NOT-AUTHORIZED)
     (asserts! (>= stake-amount u500) ERR-INSUFFICIENT-STAKE)
-    (asserts! (is-none (get-audit-dispute audit-id)) ERR-DISPUTE-EXISTS)
     
     (try! (stx-transfer? stake-amount tx-sender (as-contract tx-sender)))
     
@@ -508,12 +507,16 @@
   (default-to { active: false, standard-count: u0 } (map-get? ethical-categories { category: category }))
 )
 
-(define-read-only (get-audit-dispute (audit-id uint))
-  (some (filter (lambda (dispute-id) 
-                  (match (map-get? audit-disputes { dispute-id: dispute-id })
-                    dispute (is-eq (get audit-id dispute) audit-id)
-                    false))
-                (list (var-get dispute-count))))
+(define-read-only (get-dispute (dispute-id uint))
+  (map-get? audit-disputes { dispute-id: dispute-id })
+)
+
+(define-read-only (get-model-report (model-hash (buff 32)) (reporter principal))
+  (map-get? model-reports { model-hash: model-hash, reporter: reporter })
+)
+
+(define-read-only (get-improvement-proposal (proposal-id uint))
+  (map-get? improvement-proposals { proposal-id: proposal-id })
 )
 
 (define-read-only (get-contract-stats)
