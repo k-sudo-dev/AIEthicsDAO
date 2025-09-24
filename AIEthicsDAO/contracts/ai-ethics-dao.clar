@@ -390,3 +390,138 @@
     (ok dispute-id)
   )
 )
+
+;; Report suspicious model
+(define-public (report-model 
+  (model-hash (buff 32))
+  (reason (string-ascii 200))
+  (severity uint))
+  (let
+    (
+      (existing-report (map-get? model-reports { model-hash: model-hash, reporter: tx-sender }))
+    )
+    (asserts! (is-none existing-report) ERR-ALREADY-REPORTED)
+    (asserts! (<= severity u5) ERR-INVALID-AMOUNT)
+    
+    (map-set model-reports
+      { model-hash: model-hash, reporter: tx-sender }
+      {
+        reason: reason,
+        severity: severity,
+        reported-at: block-height,
+        resolved: false
+      }
+    )
+    
+    (ok true)
+  )
+)
+
+;; Submit improvement proposal
+(define-public (submit-improvement-proposal
+  (title (string-ascii 100))
+  (description (string-ascii 500))
+  (funding-requested uint))
+  (let
+    (
+      (proposal-id (+ (var-get proposal-count) u1))
+      (proposer-tokens (default-to { balance: u0 } (map-get? governance-tokens { holder: tx-sender })))
+    )
+    (asserts! (> (get balance proposer-tokens) u1000) ERR-INSUFFICIENT-STAKE)
+    
+    (map-set improvement-proposals
+      { proposal-id: proposal-id }
+      {
+        title: title,
+        description: description,
+        proposer: tx-sender,
+        votes-for: u0,
+        votes-against: u0,
+        funding-requested: funding-requested,
+        status: "proposed",
+        created-at: block-height
+      }
+    )
+    
+    (var-set proposal-count proposal-id)
+    (ok proposal-id)
+  )
+)
+
+;; Slash auditor for misconduct
+(define-public (slash-auditor (auditor principal) (slash-amount uint))
+  (let
+    (
+      (auditor-info (unwrap! (map-get? certified-auditors { auditor: auditor }) ERR-AUDITOR-NOT-FOUND))
+    )
+    (asserts! (is-eq tx-sender CONTRACT-OWNER) ERR-NOT-AUTHORIZED)
+    (asserts! (<= slash-amount (get stake-amount auditor-info)) ERR-INVALID-AMOUNT)
+    
+    (map-set certified-auditors
+      { auditor: auditor }
+      (merge auditor-info {
+        slashed-amount: (+ (get slashed-amount auditor-info) slash-amount),
+        reputation-score: (if (> (get reputation-score auditor-info) u20) 
+                            (- (get reputation-score auditor-info) u20) u0),
+        active: (if (> slash-amount (/ (get stake-amount auditor-info) u2)) false (get active auditor-info))
+      })
+    )
+    
+    (ok true)
+  )
+)
+
+;; Distribute governance tokens
+(define-public (transfer-governance-tokens (recipient principal) (amount uint))
+  (let
+    (
+      (sender-balance (get balance (get-governance-balance tx-sender)))
+    )
+    (asserts! (>= sender-balance amount) ERR-INSUFFICIENT-STAKE)
+    (map-set governance-tokens { holder: tx-sender } { balance: (- sender-balance amount) })
+    (map-set governance-tokens 
+      { holder: recipient } 
+      { balance: (+ (get balance (get-governance-balance recipient)) amount) }
+    )
+    (ok true)
+  )
+)
+
+;; Read-only functions
+(define-read-only (get-standard (standard-id uint))
+  (map-get? ethical-standards { standard-id: standard-id })
+)
+
+(define-read-only (get-audit (audit-id uint))
+  (map-get? model-audits { audit-id: audit-id })
+)
+
+(define-read-only (get-auditor (auditor principal))
+  (map-get? certified-auditors { auditor: auditor })
+)
+
+(define-read-only (get-governance-balance (holder principal))
+  (default-to { balance: u0 } (map-get? governance-tokens { holder: holder }))
+)
+
+(define-read-only (is-valid-category (category (string-ascii 50)))
+  (default-to { active: false, standard-count: u0 } (map-get? ethical-categories { category: category }))
+)
+
+(define-read-only (get-audit-dispute (audit-id uint))
+  (some (filter (lambda (dispute-id) 
+                  (match (map-get? audit-disputes { dispute-id: dispute-id })
+                    dispute (is-eq (get audit-id dispute) audit-id)
+                    false))
+                (list (var-get dispute-count))))
+)
+
+(define-read-only (get-contract-stats)
+  {
+    total-standards: (var-get standard-count),
+    total-audits: (var-get audit-count),
+    total-disputes: (var-get dispute-count),
+    min-auditor-stake: (var-get min-auditor-stake),
+    governance-threshold: (var-get governance-threshold)
+  }
+)
