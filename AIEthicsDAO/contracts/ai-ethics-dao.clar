@@ -237,3 +237,156 @@
     (ok true)
   )
 )
+
+;; Become certified auditor by staking tokens
+(define-public (become-auditor (stake-amount uint) (specializations (list 5 (string-ascii 50))))
+  (begin
+    (asserts! (>= stake-amount (var-get min-auditor-stake)) ERR-INSUFFICIENT-STAKE)
+    (try! (stx-transfer? stake-amount tx-sender (as-contract tx-sender)))
+    
+    (map-set certified-auditors
+      { auditor: tx-sender }
+      {
+        stake-amount: stake-amount,
+        completed-audits: u0,
+        reputation-score: u100,
+        specializations: specializations,
+        active: true,
+        slashed-amount: u0
+      }
+    )
+    
+    (ok true)
+  )
+)
+
+;; Submit model for ethical audit with platform fee
+(define-public (request-audit 
+  (model-hash (buff 32))
+  (model-name (string-ascii 100))
+  (audit-payment uint))
+  (let
+    (
+      (audit-id (+ (var-get audit-count) u1))
+      (platform-fee (/ (* audit-payment (var-get audit-fee-percentage)) u100))
+      (auditor-payment (- audit-payment platform-fee))
+    )
+    (asserts! (> audit-payment u0) ERR-INVALID-AMOUNT)
+    (try! (stx-transfer? audit-payment tx-sender (as-contract tx-sender)))
+    
+    (map-set model-audits
+      { audit-id: audit-id }
+      {
+        model-hash: model-hash,
+        model-name: model-name,
+        auditor: CONTRACT-OWNER,
+        compliance-score: u0,
+        issues-found: u0,
+        audit-report: 0x00,
+        payment: auditor-payment,
+        status: "pending",
+        created-at: block-height,
+        requester: tx-sender
+      }
+    )
+    
+    (var-set audit-count audit-id)
+    (ok audit-id)
+  )
+)
+
+;; Accept audit assignment
+(define-public (accept-audit (audit-id uint))
+  (let
+    (
+      (audit (unwrap! (map-get? model-audits { audit-id: audit-id }) ERR-MODEL-NOT-FOUND))
+      (auditor (unwrap! (map-get? certified-auditors { auditor: tx-sender }) ERR-AUDITOR-NOT-FOUND))
+    )
+    (asserts! (get active auditor) ERR-NOT-AUTHORIZED)
+    (asserts! (is-eq (get status audit) "pending") ERR-AUDIT-COMPLETE)
+    
+    (map-set model-audits
+      { audit-id: audit-id }
+      (merge audit { auditor: tx-sender, status: "in-progress" })
+    )
+    
+    (ok true)
+  )
+)
+
+;; Submit audit results
+(define-public (submit-audit 
+  (audit-id uint)
+  (compliance-score uint)
+  (issues-found uint)
+  (audit-report (buff 32)))
+  (let
+    (
+      (audit (unwrap! (map-get? model-audits { audit-id: audit-id }) ERR-MODEL-NOT-FOUND))
+      (auditor (unwrap! (map-get? certified-auditors { auditor: tx-sender }) ERR-AUDITOR-NOT-FOUND))
+    )
+    (asserts! (is-eq tx-sender (get auditor audit)) ERR-NOT-AUTHORIZED)
+    (asserts! (is-eq (get status audit) "in-progress") ERR-AUDIT-COMPLETE)
+    (asserts! (<= compliance-score u100) ERR-NOT-AUTHORIZED)
+    
+    ;; Pay auditor
+    (try! (as-contract (stx-transfer? (get payment audit) tx-sender (get auditor audit))))
+    
+    ;; Update audit
+    (map-set model-audits
+      { audit-id: audit-id }
+      (merge audit {
+        compliance-score: compliance-score,
+        issues-found: issues-found,
+        audit-report: audit-report,
+        status: "completed"
+      })
+    )
+    
+    ;; Update auditor stats
+    (map-set certified-auditors
+      { auditor: tx-sender }
+      (merge auditor {
+        completed-audits: (+ (get completed-audits auditor) u1),
+        reputation-score: (+ (get reputation-score auditor) u5)
+      })
+    )
+    
+    (ok true)
+  )
+)
+
+;; Challenge audit results
+(define-public (challenge-audit 
+  (audit-id uint)
+  (reason (string-ascii 200))
+  (stake-amount uint))
+  (let
+    (
+      (audit (unwrap! (map-get? model-audits { audit-id: audit-id }) ERR-MODEL-NOT-FOUND))
+      (dispute-id (+ (var-get dispute-count) u1))
+    )
+    (asserts! (is-eq (get status audit) "completed") ERR-NOT-AUTHORIZED)
+    (asserts! (>= stake-amount u500) ERR-INSUFFICIENT-STAKE)
+    (asserts! (is-none (get-audit-dispute audit-id)) ERR-DISPUTE-EXISTS)
+    
+    (try! (stx-transfer? stake-amount tx-sender (as-contract tx-sender)))
+    
+    (map-set audit-disputes
+      { dispute-id: dispute-id }
+      {
+        audit-id: audit-id,
+        challenger: tx-sender,
+        reason: reason,
+        stake-amount: stake-amount,
+        votes-support: u0,
+        votes-reject: u0,
+        status: "active",
+        created-at: block-height
+      }
+    )
+    
+    (var-set dispute-count dispute-id)
+    (ok dispute-id)
+  )
+)
