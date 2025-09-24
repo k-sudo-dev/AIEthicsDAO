@@ -22,3 +22,104 @@
 (define-data-var governance-threshold uint u10000)
 (define-data-var challenge-period uint u144) ;; ~24 hours in blocks
 (define-data-var audit-fee-percentage uint u5) ;; 5% platform fee
+
+(define-map ethical-standards
+  { standard-id: uint }
+  {
+    title: (string-ascii 100),
+    description: (string-ascii 500),
+    category: (string-ascii 50),
+    proposer: principal,
+    votes-for: uint,
+    votes-against: uint,
+    status: (string-ascii 20),
+    created-at: uint,
+    expires-at: uint
+  }
+)
+
+(define-map model-audits
+  { audit-id: uint }
+  {
+    model-hash: (buff 32),
+    model-name: (string-ascii 100),
+    auditor: principal,
+    compliance-score: uint,
+    issues-found: uint,
+    audit-report: (buff 32),
+    payment: uint,
+    status: (string-ascii 20),
+    created-at: uint,
+    requester: principal
+  }
+)
+
+(define-map certified-auditors
+  { auditor: principal }
+  {
+    stake-amount: uint,
+    completed-audits: uint,
+    reputation-score: uint,
+    specializations: (list 5 (string-ascii 50)),
+    active: bool,
+    slashed-amount: uint
+  }
+)
+
+(define-map audit-disputes
+  { dispute-id: uint }
+  {
+    audit-id: uint,
+    challenger: principal,
+    reason: (string-ascii 200),
+    stake-amount: uint,
+    votes-support: uint,
+    votes-reject: uint,
+    status: (string-ascii 20),
+    created-at: uint
+  }
+)
+
+(define-map stakeholder-votes
+  { standard-id: uint, voter: principal }
+  { voted: bool, vote-weight: uint }
+)
+
+(define-map dispute-votes
+  { dispute-id: uint, voter: principal }
+  { voted: bool, supports-challenge: bool }
+)
+
+(define-map governance-tokens
+  { holder: principal }
+  { balance: uint }
+)
+
+(define-map ethical-categories
+  { category: (string-ascii 50) }
+  { active: bool, standard-count: uint }
+)
+
+(define-map model-reports
+  { model-hash: (buff 32), reporter: principal }
+  { 
+    reason: (string-ascii 200),
+    severity: uint,
+    reported-at: uint,
+    resolved: bool
+  }
+)
+
+(define-map improvement-proposals
+  { proposal-id: uint }
+  {
+    title: (string-ascii 100),
+    description: (string-ascii 500),
+    proposer: principal,
+    votes-for: uint,
+    votes-against: uint,
+    funding-requested: uint,
+    status: (string-ascii 20),
+    created-at: uint
+  }
+)`
